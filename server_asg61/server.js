@@ -33,7 +33,7 @@ wss.on('connection', (ws) => {
       users.set(userId, { name: userName, ws });
       console.log(`User ${userName} (ID: ${userId}) connected.`);
       ws.send(JSON.stringify({ type: 'connect-done', id: userId, name: userName }));
-      // Send conversation summaries (like WhatsApp chat list)
+      // Send conversation summaries
       const summaries = [];
       for (const [convKey, list] of messages.entries()) {
         if (convKey.split('-').map(Number).includes(userId) && list.length) {

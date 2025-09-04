@@ -16,6 +16,8 @@ function Login({ onConnect }) {
     }
   };
 
+  // login
+
   return (
     <div className="login-outer">
       <div className="login-card">
