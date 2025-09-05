@@ -21,8 +21,12 @@ function App() {
   useEffect(() => { connectedUserRef.current = connectedUser; }, [connectedUser]);
 
   const onConnect = (name, id, setError) => {
-    socket.current.send(JSON.stringify({ type: "connect", name, id }));
-    // Handle error in useEffect
+    try {
+      socket.current.send(JSON.stringify({ type: "connect", name, id }));
+      localStorage.setItem('lastUser', JSON.stringify({ name, id }));
+    } catch (e) {
+      setError?.('Connection not ready');
+    }
   };
 
   const connectToUser = (name, id) => {
@@ -57,6 +61,13 @@ function App() {
   useEffect(() => {
     if (socket.current) return;
     socket.current = new WebSocket("ws://localhost:3001");
+    socket.current.addEventListener('open', () => {
+      // auto login if saved
+      const saved = localStorage.getItem('lastUser');
+      if (saved) {
+        try { const parsed = JSON.parse(saved); onConnect(parsed.name, parsed.id); } catch(_){}
+      }
+    });
     socket.current.addEventListener("message", event => {
       try {
         const data = JSON.parse(event.data);
@@ -71,7 +82,8 @@ function App() {
           return;
         }
         if (data.type === "conversation-summaries") {
-          setChats(data.conversations);
+          // Initialize unread state from localStorage
+          setChats(data.conversations.map(c => ({ ...c, unread: 0 })));
           return;
         }
         if (data.type === "messages") {
@@ -88,8 +100,11 @@ function App() {
           setChats(prev => {
             const otherId = isOwn ? classified.destination : classified.source.id;
             const otherName = isOwn ? (prev.find(c=>c.with.id===otherId)?.with.name || `User${otherId}`) : classified.source.name;
-            const existing = prev.filter(c => c.with.id !== otherId);
-            return [{ with: { id: otherId, name: otherName }, lastMessage: classified }, ...existing];
+            let found = prev.find(c=>c.with.id===otherId);
+            const unreadIncrement = (!isOwn && (!currentChat || currentChat.id !== otherId)) ? 1 : 0;
+            const updated = { with:{ id: otherId, name: otherName }, lastMessage: classified, unread: (found?.unread||0)+unreadIncrement };
+            const remaining = prev.filter(c=>c.with.id!==otherId);
+            return [updated, ...remaining].sort((a,b)=> new Date(b.lastMessage.time) - new Date(a.lastMessage.time));
           });
           // Notification only if NOT own message AND either no chat open or different chat
           if (!isOwn && (!currentChat || currentChat.id !== classified.source.id)) {
@@ -130,7 +145,7 @@ function App() {
   }
 
   if (!connectedUser) {
-    return <Connect user={user} onConnectToUser={connectToUser} chats={chats} onOpenChat={(c)=>connectToUser(c.with.name, c.with.id)} />;
+    return <Connect user={user} onConnectToUser={connectToUser} chats={chats} onOpenChat={(c)=>{ connectToUser(c.with.name, c.with.id); setChats(prev=> prev.map(ch=> ch.with.id===c.with.id? {...ch, unread:0}: ch)); }} />;
   }
 
   return (
@@ -147,7 +162,7 @@ function App() {
         onSendMessage={sendMessage}
         notification={notification}
         onClearNotification={() => setNotification(false)}
-  onBack={() => { setConnectedUser(null); setMessages([]); }}
+  onBack={() => { setConnectedUser(null); setMessages([]); setChats(prev=> prev.map(ch=> ch.with.id===connectedUser.id? {...ch, unread:0}: ch)); }}
       />
     </>
   );

@@ -2,20 +2,26 @@ body, html {
   height: 100%;
   margin: 0;
   padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ece5dd;
 }
 
 * { box-sizing: border-box; }
 
 .whatsapp-container {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+  height: 90vh;
   display: flex;
   flex-direction: column;
   background-color: #f0f0f0;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.15);
 }
 
 .chat-header {
@@ -180,9 +186,14 @@ body, html {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100vh;
+  height: 90vh;
+  width: 100%;
+  max-width: 900px;
   background: linear-gradient(135deg, #25d366 0%, #128c7e 100%);
   color: white;
+  border-radius: 18px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.15);
+  padding: 24px;
 }
 
 /* Login Screen */
@@ -190,10 +201,14 @@ body, html {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100vh;
+  height: 90vh;
+  width: 100%;
+  max-width: 900px;
   background: linear-gradient(135deg, #25d366 0%, #075e54 100%);
   padding: 20px;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  border-radius: 18px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.15);
 }
 
 .login-card {

@@ -46,7 +46,7 @@ function Chat({ connectedUser, messages, onSendMessage, notification, onClearNot
         )}
         {messages.map((msg, index) => (
           <div key={index} className={`message ${msg.type}`}>
-            <div className="message-bubble">
+            <div className="message-bubble" style={{fontWeight: msg.unread? 600: 400}}>
               <div className="message-text">{msg.text}</div>
               <div className="message-time">{new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
             </div>
