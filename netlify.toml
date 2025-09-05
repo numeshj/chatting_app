@@ -1,0 +1,13 @@
+[build]
+base = "client_react"
+publish = "client_react/dist"
+command = "npm install && npm run build"
+
+[build.environment]
+NODE_VERSION = "20"
+
+# SPA fallback so direct deep links work
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200

@@ -1,12 +1,66 @@
-# React + Vite
+## Chatting App (React + Vite)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Single page chat UI powered by a custom WebSocket server (`server_asg61`).
 
-Currently, two official plugins are available:
+### Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+From repository root in two terminals:
 
-## Expanding the ESLint configuration
+1. Backend:
+   ```bash
+   cd server_asg61
+   npm install
+   npm start
+   ```
+2. Frontend:
+   ```bash
+   cd client_react
+   npm install
+   npm run dev
+   ```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Open the printed Vite local URL (default http://localhost:5173).
+
+### Production Build
+```bash
+cd client_react
+npm run build
+```
+Outputs to `client_react/dist`.
+
+### Netlify Deployment
+
+The repo contains a root `netlify.toml` so Netlify auto-detects settings.
+
+Build settings (if entering manually in Netlify UI):
+- Base directory: `client_react`
+- Build command: `npm run build`
+- Publish directory: `client_react/dist`
+
+`netlify.toml` snippet:
+```
+[build]
+base = "client_react"
+publish = "client_react/dist"
+command = "npm install && npm run build"
+
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200
+```
+
+This redirect enables SPA deep linking.
+
+### Reconnection & Unread Features
+- Auto login (localStorage)
+- Unread badges & ordering
+- Reconnect same ID+name without rejection
+
+### Future Ideas
+- Persist messages server-side (DB)
+- Typing indicators
+- Authentication
+
+---
+Generated from modified Vite template.
