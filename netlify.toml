@@ -1,6 +1,8 @@
 [build]
+# When 'base' is set, Netlify runs the build inside that subdirectory.
+# Therefore the publish path should be relative to that base (just 'dist').
 base = "client_react"
-publish = "client_react/dist"
+publish = "dist"
 command = "npm install && npm run build"
 
 [build.environment]
