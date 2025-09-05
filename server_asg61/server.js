@@ -9,6 +9,28 @@ function getConversationKey(id1, id2) {
   return [id1, id2].sort().join('-');
 }
 
+function buildConversationSummaries(forUserId) {
+  const summaries = [];
+  for (const [convKey, list] of messages.entries()) {
+    if (convKey.split('-').map(Number).includes(forUserId) && list.length) {
+      const last = list[list.length - 1];
+      const otherId = last.source.id === forUserId ? last.destination : last.source.id;
+      let otherName;
+      if (last.source.id !== forUserId) {
+        otherName = last.source.name;
+      } else {
+        const found = list.find(m => m.source.id === otherId);
+        otherName = found ? found.source.name : `User${otherId}`;
+      }
+      summaries.push({
+        with: { id: otherId, name: otherName },
+        lastMessage: last
+      });
+    }
+  }
+  return summaries;
+}
+
 wss.on('connection', (ws) => {
   let userId = null;
   let userName = null;
@@ -23,39 +45,32 @@ wss.on('connection', (ws) => {
 
     if (data.type === 'connect') {
       const requestedId = parseInt(data.id);
+      const requestedName = data.name || `User${requestedId}`;
       if (users.has(requestedId)) {
-        console.log(`User ${data.name} tried to connect with ID ${requestedId}, but ID already exists.`);
-        ws.send(JSON.stringify({ type: 'connect-error', message: 'ID already taken. Choose another.' }));
+        const existing = users.get(requestedId);
+        // Allow reconnect if name matches; replace old socket
+        if (existing.name === requestedName) {
+          try { existing.ws.close(4000, 'Replaced by new connection'); } catch (_) {}
+          users.set(requestedId, { name: existing.name, ws });
+          userId = requestedId;
+          userName = existing.name;
+          console.log(`User ${userName} (ID: ${userId}) reconnected (previous session replaced).`);
+          ws.send(JSON.stringify({ type: 'connect-done', id: userId, name: userName, reconnected: true }));
+          const summaries = buildConversationSummaries(userId);
+          if (summaries.length) ws.send(JSON.stringify({ type: 'conversation-summaries', conversations: summaries }));
+        } else {
+          console.log(`User ${requestedName} tried to connect with ID ${requestedId}, but ID already exists with different name.`);
+          ws.send(JSON.stringify({ type: 'connect-error', message: 'ID already in use by different name.' }));
+        }
         return;
       }
       userId = requestedId;
-      userName = data.name || `User${userId}`;
+      userName = requestedName;
       users.set(userId, { name: userName, ws });
       console.log(`User ${userName} (ID: ${userId}) connected.`);
       ws.send(JSON.stringify({ type: 'connect-done', id: userId, name: userName }));
-      // Send conversation summaries
-      const summaries = [];
-      for (const [convKey, list] of messages.entries()) {
-        if (convKey.split('-').map(Number).includes(userId) && list.length) {
-          const last = list[list.length - 1];
-            const otherId = last.source.id === userId ? (last.destination) : last.source.id;
-            let otherName;
-            if (last.source.id !== userId) {
-              otherName = last.source.name;
-            } else {
-              // find any message where source is otherId for a name
-              const found = list.find(m => m.source.id === otherId);
-              otherName = found ? found.source.name : `User${otherId}`;
-            }
-          summaries.push({
-            with: { id: otherId, name: otherName },
-            lastMessage: last
-          });
-        }
-      }
-      if (summaries.length) {
-        ws.send(JSON.stringify({ type: 'conversation-summaries', conversations: summaries }));
-      }
+      const summaries = buildConversationSummaries(userId);
+      if (summaries.length) ws.send(JSON.stringify({ type: 'conversation-summaries', conversations: summaries }));
       return;
     }
 
