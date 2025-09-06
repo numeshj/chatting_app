@@ -132,17 +132,18 @@ wss.on('connection', (ws) => {
           ws.send(JSON.stringify({ type: 'delete-error', messageId, reason: 'Not allowed' }));
           return;
         }
-        if (!msg.deletedAll) {
-          msg.deletedAll = true;
-          msg.text = '';
-          console.log(`Message ${messageId} deleted for all in conversation ${convKey} by user ${userId}.`);
+        // Remove message from list for privacy
+        list.splice(idx, 1);
+        if (!list.length) {
+          // If conversation is now empty remove it
+          messages.delete(convKey);
         }
-        // Notify both participants
-        const payload = { type: 'message-deleted', messageId, with: otherId };
+        console.log(`Message ${messageId} removed for all in conversation ${convKey} by user ${userId}.`);
+        const payload = { type: 'message-removed', messageId, with: otherId };
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
         if (users.has(otherId)) {
-            const other = users.get(otherId);
-            if (other.ws.readyState === WebSocket.OPEN) other.ws.send(JSON.stringify(payload));
+          const other = users.get(otherId);
+          if (other.ws.readyState === WebSocket.OPEN) other.ws.send(JSON.stringify(payload));
         }
       } else if (scope === 'me') {
         // Client will handle local removal; optionally acknowledge
@@ -181,10 +182,9 @@ wss.on('connection', (ws) => {
       if (!otherId) return;
       const convKey = getConversationKey(userId, otherId);
       if (scope === 'all') {
-        const list = messages.get(convKey) || [];
-        if (list.length) {
-          list.forEach(m => { m.deletedAll = true; m.text = ''; });
-          console.log(`Conversation ${convKey} deleted for all by user ${userId}`);
+        if (messages.has(convKey)) {
+          messages.delete(convKey);
+          console.log(`Conversation ${convKey} fully removed for all by user ${userId}`);
         }
         const payload = { type:'chat-deleted', with: otherId };
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));

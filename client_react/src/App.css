@@ -5,27 +5,30 @@ body, html {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #ece5dd;
+  background: #ece5dd !important;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 * { box-sizing: border-box; }
 
-.whatsapp-container {
+.wa-app-container {
   position: relative;
   width: 100%;
   max-width: 900px;
+  min-width: 900px; /* lock width */
   height: 90vh;
   display: flex;
   flex-direction: column;
-  background-color: #f0f0f0;
+  background-color: #f0f0f0 !important;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   border-radius: 18px;
   overflow: hidden;
   box-shadow: 0 8px 28px rgba(0,0,0,0.15);
 }
 
-.chat-header {
-  background-color: #075e54;
+.wa-chat-header-base {
+  background-color: #075e54 !important;
   color: white;
   padding: 16px;
   display: flex;
@@ -33,34 +36,55 @@ body, html {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.chat-header button[aria-label="Back to chats"] {
+/* unique prefixed classes (wa-*) to avoid style collisions */
+.wa-chat-actions-btn {
+  background: rgba(255,255,255,0.12);
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  line-height: 1;
+  transition: background .2s;
+  margin-left: 8px;
+}
+.wa-chat-actions-btn:hover { background: rgba(255,255,255,0.25); }
+
+.wa-chat-menu-pop { position: fixed; inset:0; z-index: 1500; }
+.wa-chat-menu { background:#fff; padding:10px 8px; border-radius:10px; box-shadow:0 6px 22px rgba(0,0,0,0.25); width:200px; position:absolute; top:60px; right:18px; display:flex; flex-direction:column; }
+.wa-chat-menu-item { background:transparent; border:none; text-align:left; padding:8px 10px; cursor:pointer; font-size:14px; border-radius:6px; }
+.wa-chat-menu-item:hover { background:#f5f5f5; }
+.wa-chat-menu-item.wa-danger { color:#d93025; }
+
+.wa-chat-header-base button[aria-label="Back to chats"] {
   font-weight: 600;
   line-height: 1;
   padding: 6px 10px;
   border-radius: 6px;
   transition: background .2s;
 }
-.chat-header button[aria-label="Back to chats"]:hover { background: rgba(255,255,255,0.15); }
+.wa-chat-header-base button[aria-label="Back to chats"]:hover { background: rgba(255,255,255,0.15); }
 
-.contact-info {
+.wa-contact-info-base {
   flex: 1;
 }
 
-.contact-name {
+.wa-contact-name-base {
   font-size: 18px;
   font-weight: 500;
 }
 
-.contact-status {
+.wa-contact-status-base {
   font-size: 14px;
   opacity: 0.8;
 }
 
-.chat-messages {
+.wa-chat-messages-base {
   flex: 1;
   padding: 16px;
   overflow-y: auto;
-  background-color: #e5ddd5;
+  background-color: #e5ddd5 !important;
   background-image: url('/chat_asg61.jpg');
   background-size: cover;
   background-position: center;
@@ -69,65 +93,67 @@ body, html {
   flex-direction: column;
 }
 
-.message {
+.wa-message {
   margin-bottom: 12px;
   display: flex;
   justify-content: flex-start;
 }
 
-.message.sent {
+.wa-message.sent {
   justify-content: flex-end;
 }
 
-.message-bubble {
-  max-width: 70%;
+.wa-message-bubble {
+  max-width: 90%;
   padding: 8px 12px;
   border-radius: 18px;
   position: relative;
   word-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
-.message.sent .message-bubble {
-  background-color: #dcf8c6;
+.wa-message.sent .wa-message-bubble {
+  background-color: #dcf8c6 !important;
   color: #303030;
   border-bottom-right-radius: 4px;
 }
 
-.message.received .message-bubble {
-  background-color: white;
+.wa-message.received .wa-message-bubble {
+  background-color: white !important;
   color: #303030;
   border-bottom-left-radius: 4px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-.message-text {
+.wa-message-text {
   font-size: 14px;
-  line-height: 1.4;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
-.message-time {
+.wa-message-time {
   font-size: 11px;
   color: rgba(0, 0, 0, 0.45);
   margin-top: 4px;
   text-align: right;
 }
 
-.chat-input-container {
-  background-color: #f0f0f0;
+.wa-chat-input-container-base {
+  background-color: #f0f0f0 !important;
   padding: 8px 16px;
   border-top: 1px solid #e0e0e0;
 }
 
-.input-wrapper {
+.wa-input-wrapper-base {
   display: flex;
   align-items: center;
-  background-color: white;
+  background-color: white !important;
   border-radius: 25px;
   padding: 8px 16px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.message-input {
+.wa-message-input-base {
   flex: 1;
   border: none;
   outline: none;
@@ -137,7 +163,7 @@ body, html {
   color: #000;
 }
 
-.send-button {
+.wa-send-button-base {
   background: none;
   border: none;
   color: #25d366;
@@ -150,16 +176,16 @@ body, html {
   transition: background-color 0.2s;
 }
 
-.send-button:hover {
+.wa-send-button-base:hover {
   background-color: rgba(37, 211, 102, 0.1);
 }
 
-.send-button:disabled {
+.wa-send-button-base:disabled {
   color: #ccc;
   cursor: not-allowed;
 }
 
-.send-button svg {
+.wa-send-button-base svg {
   width: 24px;
   height: 24px;
 }
@@ -181,7 +207,7 @@ body, html {
   background: rgba(0, 0, 0, 0.3);
 }
 
-.connect-container {
+.wa-connect-container-base {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -197,7 +223,7 @@ body, html {
 }
 
 /* Login Screen */
-.login-outer {
+.wa-login-outer-base {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -211,7 +237,7 @@ body, html {
   box-shadow: 0 8px 28px rgba(0,0,0,0.15);
 }
 
-.login-card {
+.wa-login-card-base {
   background: #ffffff;
   width: 100%;
   max-width: 360px;
@@ -222,7 +248,7 @@ body, html {
   overflow: hidden;
 }
 
-.login-card:before {
+.wa-login-card-base:before {
   content: "";
   position: absolute;
   width: 140%;
@@ -234,7 +260,7 @@ body, html {
   pointer-events: none;
 }
 
-.login-header {
+.wa-login-header-base {
   font-size: 26px;
   font-weight: 600;
   color: #075e54;
@@ -243,16 +269,16 @@ body, html {
   letter-spacing: 0.5px;
 }
 
-.login-sub {
+.wa-login-sub-base {
   text-align: center;
   font-size: 14px;
   color: #555;
   margin-bottom: 24px;
 }
 
-.login-fields { display: flex; flex-direction: column; gap: 14px; margin-bottom: 8px; }
+.wa-login-fields-base { display: flex; flex-direction: column; gap: 14px; margin-bottom: 8px; }
 
-.login-input {
+.wa-login-input-base {
   background: #f7f9fa;
   border: 1px solid #d7e1e5;
   border-radius: 10px;
@@ -264,13 +290,13 @@ body, html {
   color: #303030;
 }
 
-.login-input:focus {
+.wa-login-input-base:focus {
   border-color: #25d366;
   background: #ffffff;
   box-shadow: 0 0 0 3px rgba(37,211,102,0.25);
 }
 
-.login-btn {
+.wa-login-btn-base {
   width: 100%;
   margin-top: 14px;
   background: linear-gradient(135deg,#25d366,#128c7e);
@@ -289,11 +315,11 @@ body, html {
   transition: filter .25s, transform .15s;
 }
 
-.login-btn:hover:not(:disabled) { filter: brightness(1.05); }
-.login-btn:active:not(:disabled) { transform: translateY(2px); }
-.login-btn:disabled { opacity: .55; cursor: not-allowed; }
+.wa-login-btn-base:hover:not(:disabled) { filter: brightness(1.05); }
+.wa-login-btn-base:active:not(:disabled) { transform: translateY(2px); }
+.wa-login-btn-base:disabled { opacity: .55; cursor: not-allowed; }
 
-.error { font-size: 13px; margin: 8px 0 0; color: #d93025; text-align: center; }
+.wa-error-base { font-size: 13px; margin: 8px 0 0; color: #d93025; text-align: center; }
 
 /* Subtle animation */
 @keyframes fadeInUp {
@@ -301,14 +327,14 @@ body, html {
   to { opacity: 1; transform: translateY(0); }
 }
 
-.login-card { animation: fadeInUp .55s ease; }
+.wa-login-card-base { animation: fadeInUp .55s ease; }
 
-.connect-container h2 {
+.wa-connect-container-base h2 {
   margin-bottom: 20px;
   font-size: 24px;
 }
 
-.connect-btn {
+.wa-connect-btn-base {
   padding: 12px 24px;
   border-radius: 25px;
   border: none;
@@ -319,11 +345,11 @@ body, html {
   transition: background-color 0.2s;
 }
 
-.connect-btn:hover {
+.wa-connect-btn-base:hover {
   background: #128c7e;
 }
 
-.modal {
+.wa-modal-base {
   position: fixed;
   top: 0;
   left: 0;
@@ -335,7 +361,7 @@ body, html {
   justify-content: center;
 }
 
-.modal-content {
+.wa-modal-content-base {
   background: white;
   padding: 20px;
   border-radius: 10px;
@@ -343,12 +369,12 @@ body, html {
   text-align: center;
 }
 
-.modal-content h3 {
+.wa-modal-content-base h3 {
   margin-bottom: 20px;
   color: #333;
 }
 
-.modal-input {
+.wa-modal-input-base {
   width: 100%;
   padding: 10px;
   margin-bottom: 10px;
@@ -357,7 +383,7 @@ body, html {
   font-size: 16px;
 }
 
-.modal-btn {
+.wa-modal-btn-base {
   padding: 10px 20px;
   border: none;
   background: #25d366;
@@ -367,7 +393,7 @@ body, html {
   margin-right: 10px;
 }
 
-.modal-close {
+.wa-modal-close-base {
   padding: 10px 20px;
   border: none;
   background: #ccc;
@@ -376,12 +402,12 @@ body, html {
   cursor: pointer;
 }
 
-.error {
+.wa-error-inline-base {
   color: red;
   margin-bottom: 10px;
 }
 
-.notification-icon {
+.wa-notification-icon-base {
   position: absolute;
   right: 16px;
   top: 16px;
@@ -390,7 +416,7 @@ body, html {
   color: #ffcc00;
 }
 
-.message-notification {
+.wa-message-notification-base {
   position: fixed;
   top: 20px;
   right: 20px;
@@ -403,11 +429,11 @@ body, html {
   max-width: 300px;
 }
 
-.message-notification p {
+.wa-message-notification-base p {
   margin: 0 0 10px 0;
 }
 
-.message-notification button {
+.wa-message-notification-base button {
   background: white;
   color: #25d366;
   border: none;
@@ -417,6 +443,48 @@ body, html {
   font-weight: bold;
 }
 
-.message-notification button:hover {
+.wa-message-notification-base button:hover {
   background: #f0f0f0;
 }
+
+/* Logout button unique styling */
+.wa-logout-btn {
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid #d5d5d5;
+  background: linear-gradient(135deg,#ffffff,#f5f5f5);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  color: #075e54;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  transition: background .25s, transform .15s, box-shadow .25s;
+}
+.wa-logout-btn:hover { background: linear-gradient(135deg,#ffffff,#eaeaea); }
+.wa-logout-btn:active { transform: translateY(2px); box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+
+/* Lottie notification */
+.wa-lottie-toast {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #ffffff;
+  padding: 12px 16px 12px 12px;
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+  cursor: pointer;
+  min-width: 260px;
+  max-width: 340px;
+  animation: fadeInUp .4s ease;
+  border: 1px solid #e3f8ef;
+  z-index: 2100;
+}
+.wa-lottie-icon { width:48px; height:48px; flex-shrink:0; }
+.wa-lottie-content { flex:1; display:flex; flex-direction:column; }
+.wa-lottie-title { font-size:12px; font-weight:600; color:#128c7e; letter-spacing:.5px; text-transform:uppercase; margin-bottom:2px; }
+.wa-lottie-text { font-size:13px; color:#333; line-height:1.35; }
+.wa-lottie-close { background:transparent; border:none; font-size:18px; cursor:pointer; color:#666; padding:2px 4px; border-radius:6px; }
+.wa-lottie-close:hover { background:#f2f2f2; }

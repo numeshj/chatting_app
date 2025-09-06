@@ -19,29 +19,29 @@ function Login({ onConnect }) {
   // login
 
   return (
-    <div className="login-outer">
-      <div className="login-card">
-        <div className="login-header">WhatsApp Clone</div>
-        <div className="login-sub">Enter a display name and numeric ID.</div>
-        <div className="login-fields">
+    <div className="wa-login-outer-base">
+      <div className="wa-login-card-base">
+        <div className="wa-login-header-base">WhatsApp Clone</div>
+        <div className="wa-login-sub-base">Enter a display name and numeric ID.</div>
+        <div className="wa-login-fields-base">
           <input
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="Display name"
-            className="login-input"
+            className="wa-login-input-base"
             onKeyDown={handleKeyDown}
           />
           <input
             value={id}
             onChange={e => setId(e.target.value)}
             placeholder="Your numeric ID"
-            className="login-input"
+            className="wa-login-input-base"
             type="number"
             onKeyDown={handleKeyDown}
           />
         </div>
-        {connectError && <p className="error" role="alert">{connectError}</p>}
-        <button className="login-btn" onClick={handleConnect} disabled={!name.trim() || !id.trim()}>
+        {connectError && <p className="wa-error-base" role="alert">{connectError}</p>}
+        <button className="wa-login-btn-base" onClick={handleConnect} disabled={!name.trim() || !id.trim()}>
           Connect
         </button>
       </div>
