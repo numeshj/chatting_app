@@ -150,6 +150,54 @@ wss.on('connection', (ws) => {
       }
       return;
     }
+
+    if (data.type === 'edit-message') {
+      // { type:'edit-message', messageId, with: otherId, newText }
+      const { messageId, with: otherId, newText } = data;
+      if (!messageId || !otherId || typeof newText !== 'string' || !newText.trim()) return;
+      const convKey = getConversationKey(userId, otherId);
+      const list = messages.get(convKey) || [];
+      const msg = list.find(m => m.messageId === messageId);
+      if (!msg) return;
+      if (msg.source.id !== userId || msg.deletedAll) {
+        ws.send(JSON.stringify({ type:'edit-error', messageId, reason:'Not allowed' }));
+        return;
+      }
+      msg.text = newText.trim();
+      msg.edited = true;
+      msg.timeEdited = new Date().toISOString();
+      const payload = { type:'message-edited', messageId, newText: msg.text, with: otherId, timeEdited: msg.timeEdited };
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+      if (users.has(otherId)) {
+        const other = users.get(otherId);
+        if (other.ws.readyState === WebSocket.OPEN) other.ws.send(JSON.stringify(payload));
+      }
+      return;
+    }
+
+    if (data.type === 'delete-chat') {
+      // { type:'delete-chat', with: otherId, scope:'all'|'me' }
+      const { with: otherId, scope } = data;
+      if (!otherId) return;
+      const convKey = getConversationKey(userId, otherId);
+      if (scope === 'all') {
+        const list = messages.get(convKey) || [];
+        if (list.length) {
+          list.forEach(m => { m.deletedAll = true; m.text = ''; });
+          console.log(`Conversation ${convKey} deleted for all by user ${userId}`);
+        }
+        const payload = { type:'chat-deleted', with: otherId };
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+        if (users.has(otherId)) {
+          const other = users.get(otherId);
+          if (other.ws.readyState === WebSocket.OPEN) other.ws.send(JSON.stringify(payload));
+        }
+      } else if (scope === 'me') {
+        // Only acknowledge to requester; client handles local removal
+        ws.send(JSON.stringify({ type:'chat-deleted-local', with: otherId }));
+      }
+      return;
+    }
   });
 
   ws.on('close', () => {

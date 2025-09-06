@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
-function Chat({ connectedUser, messages, onSendMessage, notification, onClearNotification, onBack, onDeleteLocal, onDeleteAll }) {
+function Chat({ connectedUser, messages, onSendMessage, notification, onClearNotification, onBack, onDeleteLocal, onDeleteAll, onEditMessage, onDeleteChatLocal, onDeleteChatAll }) {
   const [userMessage, setUserMessage] = useState("");
   const listRef = useRef(null);
   const [contextMessage, setContextMessage] = useState(null);
+  const [editingMessage, setEditingMessage] = useState(null);
+  const [editValue, setEditValue] = useState('');
 
   const openContext = (msg, e) => {
     e.preventDefault();
@@ -53,13 +55,22 @@ function Chat({ connectedUser, messages, onSendMessage, notification, onClearNot
           </div>
         )}
         {messages.map((msg, index) => (
-          <div key={index} className={`message ${msg.type}`}>            
-            <div className="message-bubble" onContextMenu={(e)=>openContext(msg,e)} style={{fontWeight: msg.unread? 600: 400, opacity: msg.deletedAll? .6:1, fontStyle: msg.deletedAll? 'italic':'normal'}}>
-              <div className="message-text">{msg.deletedAll ? 'Message deleted' : msg.text}</div>
-              <div className="message-time">{new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+          <div key={index} className={`message ${msg.type}`}>
+            <div style={{position:'relative', maxWidth:'70%'}}>
+              <div className="message-bubble" onContextMenu={(e)=>openContext(msg,e)} style={{fontWeight: msg.unread? 600: 400, opacity: msg.deletedAll? .6:1, fontStyle: msg.deletedAll? 'italic':'normal'}}>
+                <div className="message-text">{msg.deletedAll ? 'Message deleted' : msg.text}{msg.edited && !msg.deletedAll && <span style={{marginLeft:6, fontSize:10, opacity:.6}}>(edited)</span>}</div>
+                <div className="message-time">{new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+              </div>
+              {!msg.deletedAll && (
+                <button aria-label="Message actions" onClick={(e)=>{openContext(msg,e);}} style={{position:'absolute', top:4, right:4, background:'transparent', border:'none', cursor:'pointer', color:'#555', fontSize:14, padding:2}}>&#8942;</button>
+              )}
             </div>
           </div>
         ))}
+      </div>
+      <div style={{padding:'4px 12px', display:'flex', justifyContent:'flex-end', gap:8}}>
+        <button onClick={()=> onDeleteChatLocal()} style={{background:'#eee', border:'1px solid #ccc', padding:'6px 10px', borderRadius:6, cursor:'pointer'}}>Delete Chat (Me)</button>
+        <button onClick={()=> onDeleteChatAll()} style={{background:'#ffe6e6', border:'1px solid #ffb3b3', padding:'6px 10px', borderRadius:6, cursor:'pointer', color:'#b50000'}}>Delete Chat (All)</button>
       </div>
       {contextMessage && (
         <div style={{position:'fixed', inset:0}} onClick={closeContext}>
@@ -69,7 +80,22 @@ function Chat({ connectedUser, messages, onSendMessage, notification, onClearNot
             {contextMessage.type === 'sent' && !contextMessage.deletedAll && (
               <button style={{padding:'8px 10px', cursor:'pointer', color:'#d93025'}} onClick={()=>{ onDeleteAll(contextMessage); closeContext(); }}>Delete for all</button>
             )}
+            {contextMessage.type === 'sent' && !contextMessage.deletedAll && (
+              <button style={{padding:'8px 10px', cursor:'pointer'}} onClick={()=>{ setEditingMessage(contextMessage); setEditValue(contextMessage.text); closeContext(); }}>Edit</button>
+            )}
             <button style={{padding:'6px 10px', cursor:'pointer'}} onClick={closeContext}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {editingMessage && (
+        <div style={{position:'fixed', inset:0}} onClick={()=> setEditingMessage(null)}>
+          <div style={{position:'absolute', left:'50%', top:'50%', transform:'translate(-50%,-50%)', background:'#fff', padding:20, borderRadius:10, boxShadow:'0 6px 22px rgba(0,0,0,0.25)', width:'min(400px,90vw)', display:'flex', flexDirection:'column', gap:12}} onClick={e=>e.stopPropagation()}>
+            <h4 style={{margin:0}}>Edit message</h4>
+            <textarea value={editValue} onChange={e=> setEditValue(e.target.value)} style={{width:'100%', minHeight:90, resize:'vertical', padding:8}} />
+            <div style={{display:'flex', justifyContent:'flex-end', gap:8}}>
+              <button onClick={()=> setEditingMessage(null)} style={{padding:'8px 14px', cursor:'pointer'}}>Cancel</button>
+              <button disabled={!editValue.trim()} onClick={()=> { onEditMessage(editingMessage, editValue.trim()); setEditingMessage(null); }} style={{padding:'8px 14px', cursor:'pointer', background:'#075e54', color:'#fff', border:'none', borderRadius:6}}>Save</button>
+            </div>
           </div>
         </div>
       )}

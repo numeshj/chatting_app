@@ -76,6 +76,36 @@ function App() {
     socket.current.send(JSON.stringify({ type:'delete-message', messageId: msg.messageId, with: connectedUser.id, scope:'all' }));
   };
 
+  const editMessage = (msg, newText) => {
+    if (!connectedUser) return;
+    socket.current.send(JSON.stringify({ type:'edit-message', messageId: msg.messageId, with: connectedUser.id, newText }));
+  };
+
+  const deleteChatLocal = () => {
+    if (!connectedUser) return;
+    const convKey = getConversationKey(user.id, connectedUser.id);
+    // Remove from local state and storage
+    setMessages([]);
+    localStorage.removeItem(convKey);
+    setConnectedUser(null);
+    setChats(prev => prev.filter(c => c.with.id !== connectedUser.id));
+  };
+
+  const deleteChatAll = () => {
+    if (!connectedUser) return;
+    socket.current.send(JSON.stringify({ type:'delete-chat', with: connectedUser.id, scope:'all' }));
+  };
+
+  const logout = () => {
+    setConnectedUser(null);
+    setMessages([]);
+    setChats([]);
+    setUser(null);
+    try { localStorage.removeItem('lastUser'); } catch(_){}
+    try { socket.current?.close(); } catch(_){}
+    socket.current = null;
+  };
+
   useEffect(() => {
     if (socket.current) return;
     socket.current = new WebSocket("ws://localhost:3001");
@@ -140,6 +170,15 @@ function App() {
           setMessages(prev => prev.map(m => m.messageId === data.messageId ? { ...m, deletedAll: true, text:'' } : m));
           return;
         }
+        if (data.type === 'message-edited') {
+          setMessages(prev => prev.map(m => m.messageId === data.messageId ? { ...m, text: data.newText, edited: true } : m));
+          return;
+        }
+        if (data.type === 'chat-deleted') {
+          // The chat was wiped for all -> mark messages as deleted
+          setMessages(prev => prev.map(m => ({ ...m, deletedAll: true, text:'' })));
+          return;
+        }
         if (data.type === 'message-deleted-local') {
           // no-op: we already removed locally
           return;
@@ -172,7 +211,12 @@ function App() {
   }
 
   if (!connectedUser) {
-    return <Connect user={user} onConnectToUser={connectToUser} chats={chats} onOpenChat={(c)=>{ connectToUser(c.with.name, c.with.id); setChats(prev=> prev.map(ch=> ch.with.id===c.with.id? {...ch, unread:0}: ch)); }} />;
+    return <>
+      <div style={{position:'absolute', top:10, right:10}}>
+        <button onClick={logout} style={{padding:'6px 12px', cursor:'pointer', borderRadius:6, border:'1px solid #ccc', background:'#fff'}}>Logout</button>
+      </div>
+      <Connect user={user} onConnectToUser={connectToUser} chats={chats} onOpenChat={(c)=>{ connectToUser(c.with.name, c.with.id); setChats(prev=> prev.map(ch=> ch.with.id===c.with.id? {...ch, unread:0}: ch)); }} />
+    </>;
   }
 
   return (
@@ -191,6 +235,9 @@ function App() {
         onClearNotification={() => setNotification(false)}
         onDeleteLocal={deleteMessageLocal}
         onDeleteAll={deleteMessageAll}
+        onEditMessage={editMessage}
+        onDeleteChatLocal={deleteChatLocal}
+        onDeleteChatAll={deleteChatAll}
   onBack={() => { setConnectedUser(null); setMessages([]); setChats(prev=> prev.map(ch=> ch.with.id===connectedUser.id? {...ch, unread:0}: ch)); }}
       />
     </>
