@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 
-function Chat({ connectedUser, messages, onSendMessage, notification, onClearNotification, onBack }) {
+function Chat({ connectedUser, messages, onSendMessage, notification, onClearNotification, onBack, onDeleteLocal, onDeleteAll }) {
   const [userMessage, setUserMessage] = useState("");
   const listRef = useRef(null);
+  const [contextMessage, setContextMessage] = useState(null);
+
+  const openContext = (msg, e) => {
+    e.preventDefault();
+    setContextMessage(msg);
+  };
+
+  const closeContext = () => setContextMessage(null);
 
   const sendMessage = () => {
     if (!userMessage.trim()) return;
@@ -45,14 +53,26 @@ function Chat({ connectedUser, messages, onSendMessage, notification, onClearNot
           </div>
         )}
         {messages.map((msg, index) => (
-          <div key={index} className={`message ${msg.type}`}>
-            <div className="message-bubble" style={{fontWeight: msg.unread? 600: 400}}>
-              <div className="message-text">{msg.text}</div>
+          <div key={index} className={`message ${msg.type}`}>            
+            <div className="message-bubble" onContextMenu={(e)=>openContext(msg,e)} style={{fontWeight: msg.unread? 600: 400, opacity: msg.deletedAll? .6:1, fontStyle: msg.deletedAll? 'italic':'normal'}}>
+              <div className="message-text">{msg.deletedAll ? 'Message deleted' : msg.text}</div>
               <div className="message-time">{new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
             </div>
           </div>
         ))}
       </div>
+      {contextMessage && (
+        <div style={{position:'fixed', inset:0}} onClick={closeContext}>
+          <div style={{position:'absolute', left:'50%', top:'50%', transform:'translate(-50%,-50%)', background:'#fff', padding:16, borderRadius:8, boxShadow:'0 4px 18px rgba(0,0,0,0.2)', minWidth:220, display:'flex', flexDirection:'column', gap:8}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:14, fontWeight:600}}>Message options</div>
+            <button style={{padding:'8px 10px', cursor:'pointer'}} onClick={()=>{ onDeleteLocal(contextMessage); closeContext(); }}>Delete for me</button>
+            {contextMessage.type === 'sent' && !contextMessage.deletedAll && (
+              <button style={{padding:'8px 10px', cursor:'pointer', color:'#d93025'}} onClick={()=>{ onDeleteAll(contextMessage); closeContext(); }}>Delete for all</button>
+            )}
+            <button style={{padding:'6px 10px', cursor:'pointer'}} onClick={closeContext}>Cancel</button>
+          </div>
+        </div>
+      )}
       <div className="chat-input-container">
         <div className="input-wrapper">
           <input

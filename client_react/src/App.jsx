@@ -58,6 +58,24 @@ function App() {
     return [id1, id2].sort().join('-');
   };
 
+  const deleteMessageLocal = (msg) => {
+    // Remove only locally (for me)
+    setMessages(prev => prev.filter(m => m.messageId !== msg.messageId));
+    // Persist updated conversation
+    if (connectedUser) {
+      const convKey = getConversationKey(user.id, connectedUser.id);
+      setTimeout(()=>{
+        const newMsgs = messages.filter(m => m.messageId !== msg.messageId);
+        localStorage.setItem(convKey, JSON.stringify(newMsgs));
+      },0);
+    }
+  };
+
+  const deleteMessageAll = (msg) => {
+    if (!connectedUser) return;
+    socket.current.send(JSON.stringify({ type:'delete-message', messageId: msg.messageId, with: connectedUser.id, scope:'all' }));
+  };
+
   useEffect(() => {
     if (socket.current) return;
     socket.current = new WebSocket("ws://localhost:3001");
@@ -117,6 +135,15 @@ function App() {
           }
           return;
         }
+        if (data.type === 'message-deleted') {
+          // Mark message as deletedAll if exists
+          setMessages(prev => prev.map(m => m.messageId === data.messageId ? { ...m, deletedAll: true, text:'' } : m));
+          return;
+        }
+        if (data.type === 'message-deleted-local') {
+          // no-op: we already removed locally
+          return;
+        }
       } catch (e) {
         console.error('Error parsing message:', e, event.data);
       }
@@ -162,6 +189,8 @@ function App() {
         onSendMessage={sendMessage}
         notification={notification}
         onClearNotification={() => setNotification(false)}
+        onDeleteLocal={deleteMessageLocal}
+        onDeleteAll={deleteMessageAll}
   onBack={() => { setConnectedUser(null); setMessages([]); setChats(prev=> prev.map(ch=> ch.with.id===connectedUser.id? {...ch, unread:0}: ch)); }}
       />
     </>

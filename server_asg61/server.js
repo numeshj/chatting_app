@@ -116,6 +116,40 @@ wss.on('connection', (ws) => {
       }
       return;
     }
+
+    if (data.type === 'delete-message') {
+      // data: { type:'delete-message', messageId, with: otherUserId, scope:'all'|'me' }
+      const { messageId, with: otherId, scope } = data;
+      if (!messageId || !otherId) return;
+      const convKey = getConversationKey(userId, otherId);
+      const list = messages.get(convKey) || [];
+      if (scope === 'all') {
+        const idx = list.findIndex(m => m.messageId === messageId);
+        if (idx === -1) return;
+        const msg = list[idx];
+        // Only original sender can delete for all
+        if (msg.source.id !== userId) {
+          ws.send(JSON.stringify({ type: 'delete-error', messageId, reason: 'Not allowed' }));
+          return;
+        }
+        if (!msg.deletedAll) {
+          msg.deletedAll = true;
+          msg.text = '';
+          console.log(`Message ${messageId} deleted for all in conversation ${convKey} by user ${userId}.`);
+        }
+        // Notify both participants
+        const payload = { type: 'message-deleted', messageId, with: otherId };
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+        if (users.has(otherId)) {
+            const other = users.get(otherId);
+            if (other.ws.readyState === WebSocket.OPEN) other.ws.send(JSON.stringify(payload));
+        }
+      } else if (scope === 'me') {
+        // Client will handle local removal; optionally acknowledge
+        ws.send(JSON.stringify({ type: 'message-deleted-local', messageId }));
+      }
+      return;
+    }
   });
 
   ws.on('close', () => {
