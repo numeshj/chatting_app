@@ -31,8 +31,18 @@ function App() {
     if (socket.current && socket.current.readyState === WebSocket.OPEN) { cb(); return; }
     if (!socket.current || socket.current.readyState === WebSocket.CLOSING || socket.current.readyState === WebSocket.CLOSED) {
       try { socket.current?.close(); } catch(_){ }
-      const WS_BASE = import.meta.env.VITE_WS_URL || (location.protocol === 'https:' ? `wss://${location.host.replace(/^www\./,'')}` : `ws://${location.hostname}:3001`);
+      let WS_BASE = import.meta.env.VITE_WS_URL;
+      if (!WS_BASE) {
+        const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        if (isLocal) {
+          WS_BASE = 'ws://localhost:3001';
+        } else {
+          console.warn('WebSocket not initialized: set VITE_WS_URL env (e.g. wss://your-backend.example.com)');
+          return; // abort ensureSocket; caller callback never runs until configured
+        }
+      }
       socket.current = new WebSocket(WS_BASE);
+      window.__appSocket = socket.current;
     }
     const handler = () => {
       socket.current?.removeEventListener('open', handler);
@@ -189,10 +199,19 @@ function App() {
   // Initial socket creation + auto-login if saved
   useEffect(() => {
     if (!socket.current) {
-      const WS_BASE = import.meta.env.VITE_WS_URL || (location.protocol === 'https:' ? `wss://${location.host.replace(/^www\./,'')}` : `ws://${location.hostname}:3001`);
+      let WS_BASE = import.meta.env.VITE_WS_URL;
+      if (!WS_BASE) {
+        const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        if (isLocal) {
+          WS_BASE = 'ws://localhost:3001';
+        } else {
+          console.warn('WebSocket disabled: define VITE_WS_URL env variable pointing to deployed server.');
+          return;
+        }
+      }
       socket.current = new WebSocket(WS_BASE);
-  // expose for child components needing quick access (typing). In production, pass via context/props.
-  window.__appSocket = socket.current;
+      // expose for child components needing quick access (typing). In production, pass via context/props.
+      window.__appSocket = socket.current;
       socket.current.addEventListener('open', () => {
         const saved = localStorage.getItem('lastUser');
         if (saved && !userRef.current) {
