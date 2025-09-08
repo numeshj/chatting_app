@@ -23,16 +23,16 @@ function Connect({ user, onConnectToUser, chats = [], onOpenChat }) {
         <button className="wa-connect-btn-base" onClick={() => setShowModal(true)}>New Chat</button>
       </div>
       <div className="wa-chat-list">
-        {chats.length === 0 && <div className="wa-chat-list-empty">No chats yet. Start one.</div>}
-        {chats.map(c => {
+        {(!chats || chats.length === 0) && <div className="wa-chat-list-empty">No chats yet. Start one.</div>}
+        {(chats||[]).filter(c => c && c.with && c.with.name && (typeof c.with.id !== 'undefined')).map(c => {
           const itemCls = `wa-chat-list-item${c.unread ? ' unread' : ''}`;
           const lastMsgCls = `wa-chat-item-last${c.unread ? ' unread' : ''}`;
           return (
             <div key={c.with.id} className={itemCls}>
-              <div className="wa-chat-avatar">{c.with.name.charAt(0).toUpperCase()}</div>
+              <div className="wa-chat-avatar">{(c.with.name?.[0] || '?').toUpperCase()}</div>
               <div className="wa-chat-item-main" onClick={()=>{ onOpenChat(c); }}>
                 <div className="wa-chat-item-name">{c.with.name} <span className="wa-chat-item-id">({c.with.id})</span></div>
-                <div className={lastMsgCls}>{c.lastMessage?.text}</div>
+                <div className={lastMsgCls}>{c.lastMessage?.text || ''}</div>
               </div>
               <div className="wa-chat-item-meta">
                 {c.lastMessage && <div className="wa-chat-item-time">{new Date(c.lastMessage.time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>}
