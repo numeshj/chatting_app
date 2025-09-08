@@ -14,9 +14,13 @@ function App() {
   const [notification, setNotification] = useState(false);
   const [incomingMessage, setIncomingMessage] = useState(null);
   const [chats, setChats] = useState([]); // list of { with:{id,name}, lastMessage }
+  const [typingFrom, setTypingFrom] = useState(null); // userId currently typing to me in open chat
+  const typingTimeoutRef = useRef(null);
   const userRef = useRef(null);
   const connectedUserRef = useRef(null);
   const lastSyncRef = useRef({}); // convKey -> ISO time of newest message we have
+  const connectErrorSetterRef = useRef(null);
+  const pendingLookupsRef = useRef({}); // id -> resolve
 
   // Keep refs in sync for use inside socket listener
   useEffect(() => { userRef.current = user; }, [user]);
@@ -38,6 +42,7 @@ function App() {
 
   // Login to server (NOT opening a chat)
   const onConnect = (name, id, setError) => {
+    connectErrorSetterRef.current = setError || null;
     ensureSocket(() => {
       try {
         socket.current.send(JSON.stringify({ type: 'connect', name, id }));
@@ -47,6 +52,13 @@ function App() {
       }
     });
   };
+
+  const lookupUser = (id) => new Promise((resolve) => {
+    ensureSocket(()=> {
+      pendingLookupsRef.current[id] = resolve;
+      try { socket.current.send(JSON.stringify({ type:'lookup-user', id })); } catch { resolve({ exists:false, id }); }
+    });
+  });
 
   // Open / focus a conversation with another user
   const connectToUser = (name, id) => {
@@ -63,6 +75,7 @@ function App() {
     }
     ensureSocket(() => {
       try { socket.current.send(JSON.stringify({ type: 'get-messages', withId: id })); } catch {}
+  try { socket.current.send(JSON.stringify({ type:'mark-read', with:id })); } catch {}
     });
   };
 
@@ -176,6 +189,8 @@ function App() {
   useEffect(() => {
     if (!socket.current) {
       socket.current = new WebSocket('ws://localhost:3001');
+  // expose for child components needing quick access (typing). In production, pass via context/props.
+  window.__appSocket = socket.current;
       socket.current.addEventListener('open', () => {
         const saved = localStorage.getItem('lastUser');
         if (saved && !userRef.current) {
@@ -195,7 +210,17 @@ function App() {
             return;
           case 'connect-error':
             console.error('Connect error:', data.message);
+            try { localStorage.removeItem('lastUser'); } catch(_){ }
+            connectErrorSetterRef.current?.(data.message || 'Connect failed');
             return;
+          case 'user-info': {
+            const resolver = pendingLookupsRef.current[data.id];
+            if (resolver) {
+              resolver(data);
+              delete pendingLookupsRef.current[data.id];
+            }
+            return;
+          }
           case 'conversation-summaries':
             setChats(data.conversations.map(c => ({ ...c, unread: 0 })));
             return;
@@ -203,8 +228,8 @@ function App() {
             const convOtherId = data.messages.length ? (data.messages[0].source.id === currentUser?.id ? data.messages[0].destination : data.messages[0].source.id) : null;
             const convKey = convOtherId ? getConversationKey(currentUser.id, convOtherId) : null;
             const hidden = convKey ? readHiddenIds(convKey) : [];
-            const filtered = data.messages.filter(m => !hidden.includes(m.messageId));
-            setMessages(filtered.map(msg => ({ ...msg, type: msg.source.id === currentUser?.id ? 'sent' : 'received' })));
+            const filtered = data.messages.filter(m => !hidden.includes(m.messageId)).map(msg => ({ ...msg, type: msg.source.id === currentUser?.id ? 'sent':'received' }));
+            setMessages(filtered);
             if (convKey && filtered.length) {
               const newest = filtered[filtered.length -1].time;
               lastSyncRef.current[convKey] = newest;
@@ -221,6 +246,12 @@ function App() {
               setIncomingMessage({ name: data.source.name, text: data.text, sourceId: data.source.id, messageId: data.messageId });
               setNotification(true);
             }
+            // If it's a received message and the chat is currently open with this user, immediately mark-read
+            if (!isOwn && currentChat && currentChat.id === classified.source.id) {
+              try { socket.current?.send(JSON.stringify({ type:'mark-read', with: classified.source.id })); } catch {}
+              classified.delivered = true; // optimistic
+              classified.read = true;      // optimistic instant read
+            }
             setChats(prev => {
               const otherId = isOwn ? classified.destination : classified.source.id;
               const otherName = isOwn ? (prev.find(c=>c.with.id===otherId)?.with.name || `User${otherId}`) : classified.source.name;
@@ -235,6 +266,32 @@ function App() {
             }
             // update last sync
             lastSyncRef.current[convKey] = classified.time;
+            return;
+          }
+          case 'typing': {
+            if (currentChat && data.from === currentChat.id) {
+              setTypingFrom(data.from);
+              if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+              typingTimeoutRef.current = setTimeout(()=> setTypingFrom(null), 4000);
+            }
+            return;
+          }
+          case 'typing-stop': {
+            if (currentChat && data.from === currentChat.id) {
+              setTypingFrom(null);
+              if (typingTimeoutRef.current) { clearTimeout(typingTimeoutRef.current); typingTimeoutRef.current=null; }
+            }
+            return;
+          }
+          case 'message-status': {
+            // update single message status (delivered/read)
+            setMessages(prev => prev.map(m => m.messageId === data.messageId ? { ...m, [data.status]: true } : m));
+            setChats(prev => prev.map(c => {
+              if (c.lastMessage?.messageId === data.messageId) {
+                return { ...c, lastMessage: { ...c.lastMessage, [data.status]: true } };
+              }
+              return c;
+            }));
             return;
           }
           case 'message-removed': {
@@ -305,7 +362,7 @@ function App() {
       <div style={{position:'absolute', top:10, right:10}}>
         <button onClick={logout} className="wa-logout-btn">Logout</button>
       </div>
-      <Connect user={user} onConnectToUser={connectToUser} chats={chats} onOpenChat={(c)=>{ connectToUser(c.with.name, c.with.id); setChats(prev=> prev.map(ch=> ch.with.id===c.with.id? {...ch, unread:0}: ch)); }} />
+  <Connect user={user} lookupUser={lookupUser} onConnectToUser={connectToUser} chats={chats} onOpenChat={(c)=>{ connectToUser(c.with.name, c.with.id); setChats(prev=> prev.map(ch=> ch.with.id===c.with.id? {...ch, unread:0}: ch)); }} />
     </>;
   }
 
@@ -321,6 +378,7 @@ function App() {
       <Chat
         connectedUser={connectedUser}
         messages={messages}
+  typing={typingFrom === connectedUser.id}
         onSendMessage={sendMessage}
         notification={notification}
         onClearNotification={() => setNotification(false)}

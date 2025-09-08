@@ -47,22 +47,15 @@ wss.on('connection', (ws) => {
       const requestedId = parseInt(data.id);
       const requestedName = data.name || `User${requestedId}`;
       if (users.has(requestedId)) {
-        const existing = users.get(requestedId);
-        // Allow reconnect if name matches; replace old socket
-        if (existing.name === requestedName) {
-          try { existing.ws.close(4000, 'Replaced by new connection'); } catch (_) {}
-          users.set(requestedId, { name: existing.name, ws });
-          userId = requestedId;
-          userName = existing.name;
-          console.log(`User ${userName} (ID: ${userId}) reconnected (previous session replaced).`);
-          ws.send(JSON.stringify({ type: 'connect-done', id: userId, name: userName, reconnected: true }));
-          const summaries = buildConversationSummaries(userId);
-          if (summaries.length) ws.send(JSON.stringify({ type: 'conversation-summaries', conversations: summaries }));
-        } else {
-          console.log(`User ${requestedName} tried to connect with ID ${requestedId}, but ID already exists with different name.`);
-          ws.send(JSON.stringify({ type: 'connect-error', message: 'ID already in use by different name.' }));
-        }
-        return;
+        // (allow multi-login by taking over)
+        try {
+          const prev = users.get(requestedId);
+          if (prev && prev.ws && prev.ws.readyState === WebSocket.OPEN) {
+            try { prev.ws.send(JSON.stringify({ type: 'session-replaced' })); } catch {}
+            try { prev.ws.close(4001, 'Session replaced'); } catch {}
+          }
+        } catch {}
+        users.delete(requestedId); // ensure clean slate
       }
       userId = requestedId;
       userName = requestedName;
@@ -74,11 +67,33 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    if (data.type === 'lookup-user') {
+      const qid = parseInt(data.id);
+      if (users.has(qid)) {
+        const u = users.get(qid);
+        ws.send(JSON.stringify({ type: 'user-info', exists: true, id: qid, name: u.name }));
+      } else {
+        ws.send(JSON.stringify({ type: 'user-info', exists: false, id: qid }));
+      }
+      return;
+    }
+
     if (data.type === 'get-messages') {
       const convKey = getConversationKey(userId, data.withId);
-      const msgs = messages.get(convKey) || [];
-      console.log(`Sending ${msgs.length} messages to user ${userName} (ID: ${userId}) for conversation with ${data.withId}.`);
-      ws.send(JSON.stringify({ type: 'messages', messages: msgs }));
+      const list = messages.get(convKey) || [];
+      // Mark any messages destined to this user as delivered if not yet
+      list.forEach(m => {
+        if (m.destination === userId && !m.delivered) {
+          m.delivered = true;
+          // notify original sender if online
+          if (users.has(m.source.id)) {
+            const s = users.get(m.source.id);
+            if (s.ws.readyState === WebSocket.OPEN) s.ws.send(JSON.stringify({ type:'message-status', messageId: m.messageId, status:'delivered', with: userId }));
+          }
+        }
+      });
+      console.log(`Sending ${list.length} messages to user ${userName} (ID: ${userId}) for conversation with ${data.withId}.`);
+      ws.send(JSON.stringify({ type: 'messages', messages: list }));
       return;
     }
 
@@ -91,8 +106,10 @@ wss.on('connection', (ws) => {
         text,
         source,
         destination: destId,
-    time: new Date().toISOString(),
-    messageId: Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+        time: new Date().toISOString(),
+        messageId: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+        delivered: false,
+        read: false
       };
       // Store message
       const convKey = getConversationKey(userId, destId);
@@ -105,6 +122,9 @@ wss.on('connection', (ws) => {
         const destUser = users.get(destId);
         if (destUser.ws.readyState === WebSocket.OPEN) {
           destUser.ws.send(JSON.stringify(payload));
+          payload.delivered = true;
+          // inform sender of delivered
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type:'message-status', messageId: payload.messageId, status:'delivered', with: destId }));
           console.log(`Delivered message to ${destUser.name} (ID: ${destId}).`);
         }
       } else {
@@ -114,6 +134,42 @@ wss.on('connection', (ws) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(payload));
       }
+  return;
+    }
+    if (data.type === 'typing' || data.type === 'typing-stop') {
+      const otherId = parseInt(data.with);
+      if (!otherId || otherId === userId) return;
+      if (users.has(otherId)) {
+        const other = users.get(otherId);
+        if (other.ws.readyState === WebSocket.OPEN) {
+          other.ws.send(JSON.stringify({ type: data.type, from: userId }));
+        }
+      }
+      return;
+    }
+    if (data.type === 'mark-read') {
+      const otherId = parseInt(data.with);
+      if (!otherId) return;
+      const convKey = getConversationKey(userId, otherId);
+      const list = messages.get(convKey) || [];
+      list.forEach(m => {
+        if (m.destination === userId) {
+          if (!m.delivered) {
+            m.delivered = true;
+            if (users.has(m.source.id)) {
+              const s = users.get(m.source.id);
+              if (s.ws.readyState === WebSocket.OPEN) s.ws.send(JSON.stringify({ type:'message-status', messageId: m.messageId, status:'delivered', with: userId }));
+            }
+          }
+          if (!m.read) {
+            m.read = true;
+            if (users.has(m.source.id)) {
+              const s = users.get(m.source.id);
+              if (s.ws.readyState === WebSocket.OPEN) s.ws.send(JSON.stringify({ type:'message-status', messageId: m.messageId, status:'read', with: userId }));
+            }
+          }
+        }
+      });
       return;
     }
 
@@ -202,7 +258,11 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     if (userId !== null) {
-      users.delete(userId);
+      const existing = users.get(userId);
+      // Only delete if the stored ws is this socket (not replaced)
+      if (existing && existing.ws === ws) {
+        users.delete(userId);
+      }
     }
   });
 });

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-function Chat({ connectedUser, messages, onSendMessage, notification, onClearNotification, onBack, onDeleteLocal, onDeleteAll, onEditMessage, onDeleteChatLocal, onDeleteChatAll }) {
+function Chat({ connectedUser, messages, typing, onSendMessage, notification, onClearNotification, onBack, onDeleteLocal, onDeleteAll, onEditMessage, onDeleteChatLocal, onDeleteChatAll }) {
   const [userMessage, setUserMessage] = useState("");
   const listRef = useRef(null);
   const [contextMessage, setContextMessage] = useState(null);
@@ -9,13 +9,52 @@ function Chat({ connectedUser, messages, onSendMessage, notification, onClearNot
   const [chatMenuOpen, setChatMenuOpen] = useState(false);
   const inputRef = useRef(null);
   const [contextPos, setContextPos] = useState(null); // {x,y}
+  const containerRef = useRef(null);
+  const typingRef = useRef(false);
+  const lastTypeSentRef = useRef(0);
+  const stopTimeoutRef = useRef(null);
 
   const openContext = (msg, e) => {
     e.preventDefault();
-    const rect = e.currentTarget.getBoundingClientRect();
-    setContextPos({ x: rect.right - 10, y: rect.bottom + 4 });
+    const PANEL_W = 200; // approximate
+    const PANEL_H = 160; // approximate height; will be clamped
+    const container = containerRef.current;
+    if (!container) return;
+    const crect = container.getBoundingClientRect();
+    // click coordinates relative to container
+    let x = e.clientX - crect.left;
+    let y = e.clientY - crect.top;
+    // Horizontal fitting (prefer right side like WhatsApp; if overflow, shift left)
+    if (x + PANEL_W > crect.width - 8) {
+      x = Math.max(8, x - PANEL_W);
+    }
+    // Vertical clamp (keep fully visible)
+    if (y + PANEL_H > crect.height - 8) {
+      y = Math.max(8, crect.height - PANEL_H - 8);
+    }
+    setContextPos({ x, y });
     setContextMessage(msg);
   };
+
+  // After panel shows, adjust for real height if needed
+  useEffect(()=> {
+    if(!contextMessage || !contextPos || !containerRef.current) return;
+    const panel = document.querySelector('.wa-message-options-panel.pos-abs');
+    if(!panel) return;
+    const crect = containerRef.current.getBoundingClientRect();
+    const prect = panel.getBoundingClientRect();
+    let x = contextPos.x;
+    let y = contextPos.y;
+    if (prect.right > crect.right - 4) {
+      x = Math.max(8, x - (prect.width + 8));
+    }
+    if (prect.bottom > crect.bottom - 4) {
+      y = Math.max(8, crect.height - prect.height - 8);
+    }
+    if (x !== contextPos.x || y !== contextPos.y) {
+      setContextPos({x,y});
+    }
+  }, [contextMessage, contextPos]);
 
   const closeContext = () => setContextMessage(null);
 
@@ -23,6 +62,9 @@ function Chat({ connectedUser, messages, onSendMessage, notification, onClearNot
     if (!userMessage.trim()) return;
     onSendMessage(userMessage.trim());
     setUserMessage("");
+  // send typing stop after send
+  try { window.__appSocket?.send(JSON.stringify({ type:'typing-stop', with: connectedUser.id })); } catch {}
+  typingRef.current = false;
   };
 
   const handleKeyDown = (e) => {
@@ -41,13 +83,41 @@ function Chat({ connectedUser, messages, onSendMessage, notification, onClearNot
 
   useEffect(()=>{ inputRef.current?.focus(); }, []);
 
+  // wire global socket reference (hacky but quick). Ideally pass socket or typing callbacks via props.
+  useEffect(()=>{
+    if (!window.__appSocket && typeof WebSocket !== 'undefined') {
+      // try to detect existing sockets (not robust). Left blank intentionally.
+    }
+  }, []);
+
+  const handleChange = (e) => {
+    const val = e.target.value;
+    setUserMessage(val);
+    const now = Date.now();
+    // Only send typing event if not already flagged or after interval
+    if (!typingRef.current || (now - lastTypeSentRef.current) > 2500) {
+      try { window.__appSocket?.send(JSON.stringify({ type:'typing', with: connectedUser.id })); } catch {}
+      typingRef.current = true;
+      lastTypeSentRef.current = now;
+    }
+    if (stopTimeoutRef.current) clearTimeout(stopTimeoutRef.current);
+    stopTimeoutRef.current = setTimeout(()=> {
+      if (typingRef.current) {
+        try { window.__appSocket?.send(JSON.stringify({ type:'typing-stop', with: connectedUser.id })); } catch {}
+        typingRef.current = false;
+      }
+    }, 3000);
+  };
+
+  useEffect(()=>()=>{ if (stopTimeoutRef.current) clearTimeout(stopTimeoutRef.current); }, []);
+
   return (
-  <div className="wa-app-container">
+  <div className="wa-app-container" ref={containerRef}>
   <div className="wa-chat-header-base wa-chat-header">
         <button onClick={onBack} style={{marginRight:12, background:'transparent', border:'none', color:'#fff', cursor:'pointer', fontSize:18}} aria-label="Back to chats">←</button>
         <div className="contact-info wa-contact-info">
           <div className="contact-name wa-contact-name">{connectedUser.name} ({connectedUser.id})</div>
-          <div className="contact-status wa-contact-status">Online</div>
+          <div className="contact-status wa-contact-status">{typing ? 'Typing...' : 'Online'}</div>
         </div>
         <button aria-label="Chat actions" className="wa-chat-actions-btn" onClick={()=> setChatMenuOpen(o=>!o)}>
           &#9662;
@@ -78,10 +148,17 @@ function Chat({ connectedUser, messages, onSendMessage, notification, onClearNot
             <div style={{position:'relative', width:'100%', display:'flex', justifyContent: msg.type==='sent'? 'flex-end':'flex-start'}}>
               <div className="wa-message-bubble" onContextMenu={(e)=>openContext(msg,e)} style={{fontWeight: msg.unread? 600: 400, opacity: msg.deletedAll? .6:1, fontStyle: msg.deletedAll? 'italic':'normal'}}>
                 <div className="wa-message-text">{msg.deletedAll ? 'Message deleted' : msg.text}{msg.edited && !msg.deletedAll && <span style={{marginLeft:6, fontSize:10, opacity:.6}}>(edited)</span>}</div>
-                <div className="wa-message-time">{new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                <div className="wa-message-time">
+                  {new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {msg.type==='sent' && (
+                    <span style={{marginLeft:6, display:'inline-flex', alignItems:'center'}} aria-label={msg.read? 'Read': (msg.delivered? 'Delivered':'Sent')}>
+                      {msg.read ? '✅✅' : msg.delivered ? '✅' : '✓'}
+                    </span>
+                  )}
+                </div>
               </div>
               {!msg.deletedAll && (
-                <button aria-label="Message actions" onClick={(e)=>{openContext(msg,e);}} style={{position:'absolute', top:2, right:2, background:'rgba(0,0,0,0.05)', border:'none', cursor:'pointer', color:'#333', fontSize:16, lineHeight:1, padding:'2px 6px', borderRadius:6}}>&#9662;</button>
+                <button aria-label="Message actions" onClick={(e)=>{openContext(msg,e);}} className="wa-msg-action-btn">&#9662;</button>
               )}
             </div>
           </div>
@@ -89,16 +166,17 @@ function Chat({ connectedUser, messages, onSendMessage, notification, onClearNot
       </div>
   {/* Chat level delete buttons removed in favor of header dropdown */}
       {contextMessage && contextPos && (
-        <div style={{position:'fixed', inset:0, zIndex:2000}} onClick={closeContext}>
-          <div style={{position:'absolute', top:contextPos.y, left:contextPos.x, background:'#fff', padding:8, borderRadius:8, boxShadow:'0 4px 14px rgba(0,0,0,0.25)', minWidth:180, display:'flex', flexDirection:'column'}} onClick={e=>e.stopPropagation()}>
+        <div className="wa-message-options-chat-box" onClick={closeContext}>
+          <div className="wa-message-options-panel pos-abs" style={{top:contextPos.y, left:contextPos.x}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:11, textTransform:'uppercase', letterSpacing:.5, opacity:.6, padding:'2px 4px 6px'}}>STATUS: {contextMessage.read? 'Read' : contextMessage.delivered? 'Delivered' : 'Sent'}</div>
             {contextMessage.type === 'sent' && !contextMessage.deletedAll && (
-              <button style={{textAlign:'left', padding:'8px 10px', background:'transparent', border:'none', cursor:'pointer'}} onClick={()=>{ setEditingMessage(contextMessage); setEditValue(contextMessage.text); closeContext(); }}>Edit</button>
+              <button className="wa-message-options-action" onClick={()=>{ setEditingMessage(contextMessage); setEditValue(contextMessage.text); closeContext(); }}>Edit</button>
             )}
-            <button style={{textAlign:'left', padding:'8px 10px', background:'transparent', border:'none', cursor:'pointer'}} onClick={()=>{ onDeleteLocal(contextMessage); closeContext(); }}>Delete for me</button>
+            <button className="wa-message-options-action" onClick={()=>{ onDeleteLocal(contextMessage); closeContext(); }}>Delete for me</button>
             {contextMessage.type === 'sent' && !contextMessage.deletedAll && (
-              <button style={{textAlign:'left', padding:'8px 10px', background:'transparent', border:'none', cursor:'pointer', color:'#d93025'}} onClick={()=>{ onDeleteAll(contextMessage); closeContext(); }}>Delete for all</button>
+              <button className="wa-message-options-action danger" onClick={()=>{ onDeleteAll(contextMessage); closeContext(); }}>Delete for all</button>
             )}
-            <button style={{textAlign:'left', padding:'6px 10px', background:'transparent', border:'none', cursor:'pointer'}} onClick={closeContext}>Close</button>
+            <button className="wa-message-options-action" style={{padding:'6px 10px'}} onClick={closeContext}>Close</button>
           </div>
         </div>
       )}
@@ -120,7 +198,7 @@ function Chat({ connectedUser, messages, onSendMessage, notification, onClearNot
             type="text"
             placeholder="Type a message..."
             value={userMessage}
-            onChange={e => setUserMessage(e.target.value)}
+            onChange={handleChange}
             onKeyDown={handleKeyDown}
             className="wa-message-input-base"
             ref={inputRef}

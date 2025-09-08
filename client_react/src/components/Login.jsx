@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 function Login({ onConnect }) {
   const [name, setName] = useState("");
   const [id, setId] = useState("");
   const [connectError, setConnectError] = useState("");
+  const nameInputRef = useRef(null);
 
   const handleConnect = () => {
     if (!name.trim() || !id.trim()) return;
@@ -16,6 +17,12 @@ function Login({ onConnect }) {
     }
   };
 
+  useEffect(()=>{
+    // focus name input on mount
+    const t = setTimeout(()=>{ nameInputRef.current?.focus(); }, 20);
+    return ()=> clearTimeout(t);
+  }, []);
+
   // login
 
   return (
@@ -25,6 +32,7 @@ function Login({ onConnect }) {
         <div className="wa-login-sub-base">Enter a display name and numeric ID.</div>
         <div className="wa-login-fields-base">
           <input
+            ref={nameInputRef}
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="Display name"
