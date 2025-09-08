@@ -222,6 +222,30 @@ body, html {
   padding: 24px;
 }
 
+/* Connect screen new structured classes */
+.wa-connect-heading { margin:0 0 20px 0; font-size:24px; font-weight:600; }
+.wa-connect-actions { display:flex; gap:12px; margin-bottom:20px; }
+.wa-chat-list { background:#fff !important; width:100%; max-width:600px; border-radius:12px; padding:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15); max-height:60vh; overflow-y:auto; }
+.wa-chat-list-empty { padding:24px; text-align:center; opacity:.65; font-size:14px; }
+.wa-chat-list-item { position:relative; display:flex; cursor:pointer; align-items:center; padding:12px 14px; border-bottom:1px solid #f0f0f0; gap:12px; transition: background .2s; }
+.wa-chat-list-item.unread { background: rgba(37,211,102,0.08) !important; }
+.wa-chat-list-item:hover { background: rgba(0,0,0,0.04); }
+.wa-chat-avatar { width:44px; height:44px; border-radius:50%; background:#25d366 !important; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:600; font-size:18px; flex-shrink:0; }
+.wa-chat-item-main { flex:1; min-width:0; }
+.wa-chat-item-name { font-weight:600; color:#075e54 !important; font-size:15px; }
+.wa-chat-item-id { opacity:.5; font-weight:400; }
+.wa-chat-item-last { font-size:13px; color:#555; font-weight:400; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:300px; }
+.wa-chat-item-last.unread { color:#000; font-weight:600; }
+.wa-chat-item-meta { text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+.wa-chat-item-time { font-size:11px; color:#777; }
+.wa-chat-item-unread-badge { background:#25d366 !important; color:#fff; font-size:11px; font-weight:600; min-width:18px; height:18px; border-radius:9px; display:flex; align-items:center; justify-content:center; padding:0 5px; }
+.wa-chat-item-menu-btn { margin-left:8px; background:rgba(0,0,0,0.05); border:none; cursor:pointer; padding:4px 8px; border-radius:6px; transition: background .2s; }
+.wa-chat-item-menu-btn:hover { background:rgba(0,0,0,0.12); }
+.wa-chat-item-menu-wrapper { position:absolute; top:100%; right:10px; z-index:10; }
+.wa-chat-item-menu { background:#fff !important; border:1px solid #ddd; box-shadow:0 4px 14px rgba(0,0,0,0.15); border-radius:8px; padding:8px; min-width:160px; display:flex; flex-direction:column; }
+.wa-chat-item-menu-action { text-align:left; padding:6px 8px; background:transparent; border:none; cursor:pointer; font-size:13px; border-radius:6px; transition: background .15s; }
+.wa-chat-item-menu-action:hover { background:#f5f5f5; }
+
 /* Login Screen */
 .wa-login-outer-base {
   display: flex;

@@ -16,34 +16,66 @@ function App() {
   const [chats, setChats] = useState([]); // list of { with:{id,name}, lastMessage }
   const userRef = useRef(null);
   const connectedUserRef = useRef(null);
+  const lastSyncRef = useRef({}); // convKey -> ISO time of newest message we have
 
   // Keep refs in sync for use inside socket listener
   useEffect(() => { userRef.current = user; }, [user]);
   useEffect(() => { connectedUserRef.current = connectedUser; }, [connectedUser]);
 
-  const onConnect = (name, id, setError) => {
-    try {
-      socket.current.send(JSON.stringify({ type: "connect", name, id }));
-      localStorage.setItem('lastUser', JSON.stringify({ name, id }));
-    } catch (e) {
-      setError?.('Connection not ready');
+  // Ensure socket is open (re-create if closed) then invoke callback
+  const ensureSocket = (cb) => {
+    if (socket.current && socket.current.readyState === WebSocket.OPEN) { cb(); return; }
+    if (!socket.current || socket.current.readyState === WebSocket.CLOSING || socket.current.readyState === WebSocket.CLOSED) {
+      try { socket.current?.close(); } catch(_){}
+      socket.current = new WebSocket("ws://localhost:3001");
     }
+    const handler = () => {
+      socket.current?.removeEventListener('open', handler);
+      cb();
+    };
+    socket.current.addEventListener('open', handler);
   };
 
+  // Login to server (NOT opening a chat)
+  const onConnect = (name, id, setError) => {
+    ensureSocket(() => {
+      try {
+        socket.current.send(JSON.stringify({ type: 'connect', name, id }));
+        localStorage.setItem('lastUser', JSON.stringify({ name, id }));
+      } catch(e) {
+        setError?.('Failed to send connect');
+      }
+    });
+  };
+
+  // Open / focus a conversation with another user
   const connectToUser = (name, id) => {
+    if (!user) return;
     setConnectedUser({ name, id });
-  // Clear notification if it belongs to this user
-  setIncomingMessage(prev => prev && prev.sourceId === id ? null : prev);
-    // Load messages from localStorage
+    // Clear notification if from this user
+    setIncomingMessage(prev => prev && prev.sourceId === id ? null : prev);
     const convKey = getConversationKey(user.id, id);
     const stored = localStorage.getItem(convKey);
     if (stored) {
-      setMessages(JSON.parse(stored));
+      try { setMessages(JSON.parse(stored)); } catch { setMessages([]); }
     } else {
       setMessages([]);
     }
-    // Request messages from server
-    socket.current.send(JSON.stringify({ type: "get-messages", withId: id }));
+    ensureSocket(() => {
+      try { socket.current.send(JSON.stringify({ type: 'get-messages', withId: id })); } catch {}
+    });
+  };
+
+  const getConversationKey = (id1, id2) => [id1, id2].sort().join('-');
+  const getHiddenKey = (convKey) => convKey + ':hidden';
+  const readHiddenIds = (convKey) => {
+    try { const raw = localStorage.getItem(getHiddenKey(convKey)); return raw? JSON.parse(raw): []; } catch { return []; }
+  };
+  const addHiddenId = (convKey, messageId) => {
+    try {
+      const list = readHiddenIds(convKey);
+      if (!list.includes(messageId)) localStorage.setItem(getHiddenKey(convKey), JSON.stringify([...list, messageId]));
+    } catch {}
   };
 
   const sendMessage = (text) => {
@@ -54,31 +86,9 @@ function App() {
       destination: connectedUser.id
     };
     // Do NOT optimistically add; rely on server echo so both sides share canonical timestamps
-    socket.current.send(JSON.stringify(payload));
-  };
-
-  const getConversationKey = (id1, id2) => {
-    return [id1, id2].sort().join('-');
-  };
-
-  const getHiddenKey = (convKey) => convKey + ':hidden';
-
-  const readHiddenIds = (convKey) => {
-    try {
-      const raw = localStorage.getItem(getHiddenKey(convKey));
-      if (!raw) return [];
-      return JSON.parse(raw);
-    } catch { return []; }
-  };
-
-  const addHiddenId = (convKey, messageId) => {
-    try {
-      const list = readHiddenIds(convKey);
-      if (!list.includes(messageId)) {
-        const updated = [...list, messageId];
-        localStorage.setItem(getHiddenKey(convKey), JSON.stringify(updated));
-      }
-    } catch { /* ignore */ }
+    ensureSocket(() => {
+      try { socket.current.send(JSON.stringify(payload)); } catch {}
+    });
   };
 
   const deleteMessageLocal = (msg) => {
@@ -107,12 +117,16 @@ function App() {
 
   const deleteMessageAll = (msg) => {
     if (!connectedUser) return;
-    socket.current.send(JSON.stringify({ type:'delete-message', messageId: msg.messageId, with: connectedUser.id, scope:'all' }));
+    ensureSocket(()=>{
+      try { socket.current.send(JSON.stringify({ type:'delete-message', messageId: msg.messageId, with: connectedUser.id, scope:'all' })); } catch {}
+    });
   };
 
   const editMessage = (msg, newText) => {
     if (!connectedUser) return;
-    socket.current.send(JSON.stringify({ type:'edit-message', messageId: msg.messageId, with: connectedUser.id, newText }));
+    ensureSocket(()=>{
+      try { socket.current.send(JSON.stringify({ type:'edit-message', messageId: msg.messageId, with: connectedUser.id, newText })); } catch {}
+    });
   };
 
   const deleteChatLocal = () => {
@@ -127,7 +141,9 @@ function App() {
 
   const deleteChatAll = () => {
     if (!connectedUser) return;
-    socket.current.send(JSON.stringify({ type:'delete-chat', with: connectedUser.id, scope:'all' }));
+    ensureSocket(()=>{
+      try { socket.current.send(JSON.stringify({ type:'delete-chat', with: connectedUser.id, scope:'all' })); } catch {}
+    });
   };
 
   const logout = () => {
@@ -140,100 +156,127 @@ function App() {
     socket.current = null;
   };
 
+  // Hydrate cached chats early (optimistic) before websocket summaries
   useEffect(() => {
-    if (socket.current) return;
-    socket.current = new WebSocket("ws://localhost:3001");
-    socket.current.addEventListener('open', () => {
-      // auto login if saved
-      const saved = localStorage.getItem('lastUser');
-      if (saved) {
-        try { const parsed = JSON.parse(saved); onConnect(parsed.name, parsed.id); } catch(_){}
+    try {
+      const cached = localStorage.getItem('cachedChats');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) setChats(parsed);
       }
-    });
-    socket.current.addEventListener("message", event => {
-      try {
-        const data = JSON.parse(event.data);
+    } catch {}
+  }, []);
+
+  // Persist chats whenever they change (exclude unread ephemeral changes? we store them anyway)
+  useEffect(() => {
+    try { localStorage.setItem('cachedChats', JSON.stringify(chats)); } catch {}
+  }, [chats]);
+
+  // Initial socket creation + auto-login if saved
+  useEffect(() => {
+    if (!socket.current) {
+      socket.current = new WebSocket('ws://localhost:3001');
+      socket.current.addEventListener('open', () => {
+        const saved = localStorage.getItem('lastUser');
+        if (saved && !userRef.current) {
+          try { const parsed = JSON.parse(saved); onConnect(parsed.name, parsed.id); } catch {}
+        }
+      });
+      const messageHandler = (event) => {
+        let data;
+        try { data = JSON.parse(event.data); } catch { return; }
         const currentUser = userRef.current;
         const currentChat = connectedUserRef.current;
-        if (data.type === "messages") {
-          const convOtherId = data.messages.length ? (data.messages[0].source.id === currentUser?.id ? data.messages[0].destination : data.messages[0].source.id) : null;
-          const convKey = convOtherId ? getConversationKey(currentUser.id, convOtherId) : null;
-          const hidden = convKey ? readHiddenIds(convKey) : [];
+  // Allow summaries to be processed even if userRef not yet synced after setUser
+  if (!currentUser && !['connect-done','connect-error','conversation-summaries'].includes(data.type)) return;
+        switch (data.type) {
+          case 'connect-done':
+            setUser({ name: data.name, id: data.id });
+            return;
+          case 'connect-error':
+            console.error('Connect error:', data.message);
+            return;
+          case 'conversation-summaries':
+            setChats(data.conversations.map(c => ({ ...c, unread: 0 })));
+            return;
+          case 'messages': {
+            const convOtherId = data.messages.length ? (data.messages[0].source.id === currentUser?.id ? data.messages[0].destination : data.messages[0].source.id) : null;
+            const convKey = convOtherId ? getConversationKey(currentUser.id, convOtherId) : null;
+            const hidden = convKey ? readHiddenIds(convKey) : [];
             const filtered = data.messages.filter(m => !hidden.includes(m.messageId));
-          setMessages(filtered.map(msg => ({
-            ...msg,
-            type: msg.source.id === currentUser?.id ? 'sent' : 'received'
-          })));
-          return;
-        }
-        if (data.type === "message") {
-          const isOwn = data.source.id === currentUser?.id;
-          const classified = { ...data, type: isOwn ? 'sent' : 'received' };
-          const convKey = getConversationKey(currentUser.id, isOwn ? classified.destination : classified.source.id);
-          const hidden = readHiddenIds(convKey);
-          if (hidden.includes(classified.messageId)) return;
-          if (!isOwn && (!currentChat || currentChat.id !== classified.source.id)) {
-            setIncomingMessage({ name: data.source.name, text: data.text, sourceId: data.source.id, messageId: data.messageId });
-            setNotification(true);
-          }
-          setChats(prev => {
-            const otherId = isOwn ? classified.destination : classified.source.id;
-            const otherName = isOwn ? (prev.find(c=>c.with.id===otherId)?.with.name || `User${otherId}`) : classified.source.name;
-            let found = prev.find(c=>c.with.id===otherId);
-            const unreadIncrement = (!isOwn && (!currentChat || currentChat.id !== otherId)) ? 1 : 0;
-            const updated = { with:{ id: otherId, name: otherName }, lastMessage: classified, unread: (found?.unread||0)+unreadIncrement };
-            const remaining = prev.filter(c=>c.with.id!==otherId);
-            return [updated, ...remaining].sort((a,b)=> new Date(b.lastMessage.time) - new Date(a.lastMessage.time));
-          });
-          if (currentChat && (classified.source.id === currentChat.id || classified.destination === currentChat.id)) {
-            setMessages(prev => [...prev, classified]);
-          }
-          return;
-        }
-        if (data.type === 'message-removed') {
-          setMessages(prev => {
-            const updated = prev.filter(m => m.messageId !== data.messageId);
-            if (currentChat) {
-              setChats(prevChats => prevChats.map(c => {
-                if (c.with.id !== currentChat.id) return c;
-                if (c.lastMessage?.messageId === data.messageId) {
-                  const newLast = updated[updated.length - 1] || null;
-                  return { ...c, lastMessage: newLast };
-                }
-                return c;
-              }));
+            setMessages(filtered.map(msg => ({ ...msg, type: msg.source.id === currentUser?.id ? 'sent' : 'received' })));
+            if (convKey && filtered.length) {
+              const newest = filtered[filtered.length -1].time;
+              lastSyncRef.current[convKey] = newest;
             }
-            return updated;
-          });
-          // Clean hidden record if exists
-          if (currentChat) {
-            const convKey = getConversationKey(currentUser.id, currentChat.id);
-            const hidden = readHiddenIds(convKey).filter(id => id !== data.messageId);
-            localStorage.setItem(getHiddenKey(convKey), JSON.stringify(hidden));
+            return;
           }
-          return;
-        }
-        if (data.type === 'message-edited') {
-          setMessages(prev => prev.map(m => m.messageId === data.messageId ? { ...m, text: data.newText, edited: true } : m));
-          return;
-        }
-        if (data.type === 'chat-deleted') {
-          // Remove conversation entirely for both sides
-          if (currentChat && currentChat.id === data.with) {
-            setMessages([]);
-            setConnectedUser(null);
+          case 'message': {
+            const isOwn = data.source.id === currentUser?.id;
+            const classified = { ...data, type: isOwn ? 'sent' : 'received' };
+            const convKey = getConversationKey(currentUser.id, isOwn ? classified.destination : classified.source.id);
+            const hidden = readHiddenIds(convKey);
+            if (hidden.includes(classified.messageId)) return;
+            if (!isOwn && (!currentChat || currentChat.id !== classified.source.id)) {
+              setIncomingMessage({ name: data.source.name, text: data.text, sourceId: data.source.id, messageId: data.messageId });
+              setNotification(true);
+            }
+            setChats(prev => {
+              const otherId = isOwn ? classified.destination : classified.source.id;
+              const otherName = isOwn ? (prev.find(c=>c.with.id===otherId)?.with.name || `User${otherId}`) : classified.source.name;
+              const found = prev.find(c=>c.with.id===otherId);
+              const unreadIncrement = (!isOwn && (!currentChat || currentChat.id !== otherId)) ? 1 : 0;
+              const updated = { with:{ id: otherId, name: otherName }, lastMessage: classified, unread: (found?.unread||0)+unreadIncrement };
+              const remaining = prev.filter(c=>c.with.id!==otherId);
+              return [updated, ...remaining].sort((a,b)=> new Date(b.lastMessage.time) - new Date(a.lastMessage.time));
+            });
+            if (currentChat && (classified.source.id === currentChat.id || classified.destination === currentChat.id)) {
+              setMessages(prev => [...prev, classified]);
+            }
+            // update last sync
+            lastSyncRef.current[convKey] = classified.time;
+            return;
           }
-          setChats(prev => prev.filter(c => c.with.id !== data.with));
-          return;
+          case 'message-removed': {
+            setMessages(prev => {
+              const updated = prev.filter(m => m.messageId !== data.messageId);
+              if (currentChat) {
+                setChats(prevChats => prevChats.map(c => {
+                  if (c.with.id !== currentChat.id) return c;
+                  if (c.lastMessage?.messageId === data.messageId) {
+                    const newLast = updated[updated.length - 1] || null;
+                    return { ...c, lastMessage: newLast };
+                  }
+                  return c;
+                }));
+              }
+              return updated;
+            });
+            if (currentChat) {
+              const convKey = getConversationKey(currentUser.id, currentChat.id);
+              const hidden = readHiddenIds(convKey).filter(id => id !== data.messageId);
+              localStorage.setItem(getHiddenKey(convKey), JSON.stringify(hidden));
+            }
+            return;
+          }
+          case 'message-edited':
+            setMessages(prev => prev.map(m => m.messageId === data.messageId ? { ...m, text: data.newText, edited: true } : m));
+            return;
+          case 'chat-deleted':
+            if (currentChat && currentChat.id === data.with) {
+              setMessages([]);
+              setConnectedUser(null);
+            }
+            setChats(prev => prev.filter(c => c.with.id !== data.with));
+            return;
+          case 'message-deleted-local':
+            return; // ignore
+          default:
+            return;
         }
-        if (data.type === 'message-deleted-local') {
-          // no-op: we already removed locally
-          return;
-        }
-      } catch (e) {
-        console.error('Error parsing message:', e, event.data);
-      }
-    });
+      };
+      socket.current.addEventListener('message', messageHandler);
+    }
   }, []);
 
   useEffect(() => {
@@ -275,7 +318,7 @@ function App() {
           onClose={() => setIncomingMessage(null)}
         />
       )}
-  <Chat
+      <Chat
         connectedUser={connectedUser}
         messages={messages}
         onSendMessage={sendMessage}
@@ -286,7 +329,7 @@ function App() {
         onEditMessage={editMessage}
         onDeleteChatLocal={deleteChatLocal}
         onDeleteChatAll={deleteChatAll}
-  onBack={() => { setConnectedUser(null); setMessages([]); setChats(prev=> prev.map(ch=> ch.with.id===connectedUser.id? {...ch, unread:0}: ch)); }}
+        onBack={() => { setConnectedUser(null); setMessages([]); setChats(prev=> prev.map(ch=> ch.with.id===connectedUser.id? {...ch, unread:0}: ch)); }}
       />
     </>
   );
