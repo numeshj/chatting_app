@@ -30,8 +30,9 @@ function App() {
   const ensureSocket = (cb) => {
     if (socket.current && socket.current.readyState === WebSocket.OPEN) { cb(); return; }
     if (!socket.current || socket.current.readyState === WebSocket.CLOSING || socket.current.readyState === WebSocket.CLOSED) {
-      try { socket.current?.close(); } catch(_){}
-      socket.current = new WebSocket("ws://localhost:3001");
+      try { socket.current?.close(); } catch(_){ }
+      const WS_BASE = import.meta.env.VITE_WS_URL || (location.protocol === 'https:' ? `wss://${location.host.replace(/^www\./,'')}` : `ws://${location.hostname}:3001`);
+      socket.current = new WebSocket(WS_BASE);
     }
     const handler = () => {
       socket.current?.removeEventListener('open', handler);
@@ -188,7 +189,8 @@ function App() {
   // Initial socket creation + auto-login if saved
   useEffect(() => {
     if (!socket.current) {
-      socket.current = new WebSocket('ws://localhost:3001');
+      const WS_BASE = import.meta.env.VITE_WS_URL || (location.protocol === 'https:' ? `wss://${location.host.replace(/^www\./,'')}` : `ws://${location.hostname}:3001`);
+      socket.current = new WebSocket(WS_BASE);
   // expose for child components needing quick access (typing). In production, pass via context/props.
   window.__appSocket = socket.current;
       socket.current.addEventListener('open', () => {
